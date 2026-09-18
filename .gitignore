@@ -1,0 +1,16 @@
+# Titkok — soha ne kerüljenek verziókövetésbe
+.env
+*.key
+*.pem
+secrets.yaml
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Szerkesztő és rendszer
+.vscode/
+.idea/
+.DS_Store

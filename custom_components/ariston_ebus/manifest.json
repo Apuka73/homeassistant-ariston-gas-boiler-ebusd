@@ -1,0 +1,12 @@
+{
+  "domain": "ariston_ebus",
+  "name": "Ariston Gas Boiler (ebusd)",
+  "codeowners": ["@Apuka73"],
+  "config_flow": true,
+  "documentation": "https://github.com/Apuka73/homeassistant-ariston-gas-boiler-ebusd",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/Apuka73/homeassistant-ariston-gas-boiler-ebusd/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

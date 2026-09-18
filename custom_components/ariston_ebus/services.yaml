@@ -1,0 +1,17 @@
+set_gas_meter_reading:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: ariston_ebus
+    reading:
+      required: true
+      example: 12871.803
+      selector:
+        number:
+          min: 0
+          max: 999999
+          step: 0.001
+          mode: box
+          unit_of_measurement: m³

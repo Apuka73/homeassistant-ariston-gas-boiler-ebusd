@@ -1,0 +1,213 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Ariston eBUS (ebusd)",
+        "description": "Enter the address of the running ebusd daemon. The integration only reads from the bus.",
+        "data": {
+          "host": "Host",
+          "port": "Port"
+        },
+        "data_description": {
+          "host": "The IP address or hostname where ebusd runs (not the eBUS adapter).",
+          "port": "The ebusd TCP command port, 8888 by default."
+        }
+      },
+      "reconfigure": {
+        "title": "Change the ebusd address",
+        "description": "Enter the new address of the ebusd daemon. Entities and history are kept.",
+        "data": {
+          "host": "Host",
+          "port": "Port"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot reach ebusd on this address.",
+      "invalid_response": "The service answered, but it does not look like ebusd.",
+      "no_boiler": "ebusd is running, but it has no 'boiler' circuit. Check the loaded CSV configuration."
+    },
+    "abort": {
+      "already_configured": "This ebusd instance is already set up.",
+      "masik_ebusd": "This is a different ebusd instance than the one configured.",
+      "reconfigure_successful": "The address has been updated."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Settings",
+        "data": {
+          "scan_interval": "Polling interval (seconds)",
+          "gas_estimation": "Gas consumption estimation",
+          "error_log": "Read the boiler error log"
+        },
+        "data_description": {
+          "scan_interval": "How often values are refreshed. Slow registers are still read rarely.",
+          "gas_estimation": "Integrates the flame power into heat energy and converts it to gas volume.",
+          "error_log": "Reads all 10 error log entries every 10 minutes."
+        }
+      }
+    }
+  },
+  "services": {
+    "set_gas_meter_reading": {
+      "name": "Record gas meter reading",
+      "description": "Records the reading of the physical gas meter, rebases the estimate and calibrates the m³/kWh factor.",
+      "fields": {
+        "reading": {
+          "name": "Meter reading",
+          "description": "The value shown on the physical gas meter, in m³."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "boiler_status": {
+        "name": "Boiler status",
+        "state": {
+          "standby": "Standby",
+          "heating": "Heating",
+          "circulating": "Circulating",
+          "comfort": "Comfort",
+          "gas_circuit_deaeration": "Gas circuit deaeration",
+          "auto_calibration": "Auto calibration",
+          "low_water_pressure": "Low water pressure",
+          "no_flame": "No flame",
+          "heating_hot_water": "Heating hot water",
+          "water_tank": "Water tank",
+          "manual_test": "Manual test"
+        }
+      },
+      "flame_power": {
+        "name": "Flame power (raw)"
+      },
+      "flame_power_gated": {
+        "name": "Flame power"
+      },
+      "modulation": {
+        "name": "Modulation"
+      },
+      "fan_speed": {
+        "name": "Fan speed"
+      },
+      "outside_temperature": {
+        "name": "Outside temperature"
+      },
+      "boiler_pressure": {
+        "name": "Water pressure"
+      },
+      "burner_hours_heating": {
+        "name": "Burner hours (heating)"
+      },
+      "burner_hours_water": {
+        "name": "Burner hours (hot water)"
+      },
+      "pump_hours": {
+        "name": "Pump hours"
+      },
+      "ignition_cycles": {
+        "name": "Ignition cycles"
+      },
+      "flame_lift_offs": {
+        "name": "Flame lift-offs"
+      },
+      "flame_lift_ratio": {
+        "name": "Flame lift ratio"
+      },
+      "fan_cycles": {
+        "name": "Fan cycles"
+      },
+      "circulation_cycles": {
+        "name": "Circulation cycles"
+      },
+      "diverter_cycles": {
+        "name": "Diverter cycles"
+      },
+      "diverter_valve": {
+        "name": "Diverter valve",
+        "state": {
+          "heating": "Heating",
+          "dhw": "Hot water"
+        }
+      },
+      "nominal_power": {
+        "name": "Nominal power"
+      },
+      "heating_max_power": {
+        "name": "Heating maximum power"
+      },
+      "heating_min_power": {
+        "name": "Heating minimum power"
+      },
+      "water_max_power": {
+        "name": "Hot water maximum power"
+      },
+      "boiler_type": {
+        "name": "Boiler type"
+      },
+      "pressure_device": {
+        "name": "Pressure monitoring device"
+      },
+      "pump_operation": {
+        "name": "Pump operation"
+      },
+      "post_circulation": {
+        "name": "Post circulation"
+      },
+      "dhw_target_temperature": {
+        "name": "Hot water target temperature"
+      },
+      "flow_setpoint": {
+        "name": "Flow temperature setpoint"
+      },
+      "heat_energy": {
+        "name": "Heat energy"
+      },
+      "gas_consumption": {
+        "name": "Gas consumption"
+      },
+      "gas_meter_estimate": {
+        "name": "Estimated gas meter reading"
+      },
+      "gas_since_reading": {
+        "name": "Gas since last reading"
+      },
+      "error_log": {
+        "name": "Error log"
+      },
+      "symbol_rate": {
+        "name": "Bus symbol rate"
+      },
+      "return_temperature": {
+        "name": "Return water temperature"
+      },
+      "operating_hours": {
+        "name": "Operating time"
+      }
+    },
+    "binary_sensor": {
+      "flame": {
+        "name": "Flame"
+      },
+      "zone1_heating": {
+        "name": "Zone 1 heat demand"
+      },
+      "zone2_heating": {
+        "name": "Zone 2 heat demand"
+      },
+      "zone3_heating": {
+        "name": "Zone 3 heat demand"
+      },
+      "bus_signal": {
+        "name": "eBUS signal"
+      }
+    },
+    "number": {
+      "gas_factor": {
+        "name": "Gas calibration factor"
+      }
+    }
+  }
+}

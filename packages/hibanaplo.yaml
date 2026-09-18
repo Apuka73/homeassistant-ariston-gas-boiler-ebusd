@@ -1,0 +1,154 @@
+###############################################################################
+# Kazán hibanapló (10 bejegyzés) és a bejegyzések első kiolvasásának ideje
+#
+# A kazán 10 mélységű, léptetett hibanaplót tart (ebusd: boiler/last_error = legfrissebb,
+# error_slot_1 … error_slot_9 = régebbiek). A bejegyzésekhez NEM tárol időpontot (a dátummezők ff-ek).
+# Ezért a HA 10 percenként egyben kiolvassa a teljes naplót (scripts/ebusd_hibanaplo.py, ebusd TCP 8888,
+# -m 0 = friss busz-olvasás), és összeveti az előzővel: ha a napló k bejegyzéssel lejjebb csúszott
+# (új[k:] == régi[:10−k]), akkor az első k bejegyzés új, és megkapja a kiolvasás időpontját.
+# Így az ugyanazzal a kóddal ismétlődő hibák is látszanak.
+#
+# Az ELSŐ kiolvasáskor a naplóban már bent lévő 10 bejegyzés időpont nélkül marad, és
+# „a nyilvántartás kezdete előtti” megjegyzést kapja — ezekről a kazán nem tud dátumot mondani.
+# Onnantól minden új bejegyzés megkapja a kiolvasás időpontját.
+###############################################################################
+
+command_line:
+  - sensor:
+      name: "Kazán hibanapló nyers"
+      unique_id: kazan_hibanaplo_nyers
+      icon: mdi:clipboard-text-search-outline
+      command: "python3 /config/scripts/ebusd_hibanaplo.py"
+      command_timeout: 60
+      scan_interval: 600
+      value_template: "{{ value_json.rovid if value_json.ok else 'hiba' }}"
+      json_attributes:
+        - ok
+        - kodok
+        - hiba
+
+template:
+  - triggers:
+      - trigger: state
+        entity_id: sensor.kazan_hibanaplo_nyers
+      - trigger: time_pattern
+        minutes: "/30"
+      - trigger: homeassistant
+        event: start
+    sensor:
+      - name: "Kazán hibanapló"
+        unique_id: kazan_hibanaplo
+        icon: mdi:clipboard-alert-outline
+        state: >-
+          {%- set n = states.sensor.kazan_hibanaplo_nyers -%}
+          {%- if n and n.attributes.ok and (n.attributes.kodok | count) == 10 -%}
+            {{ n.attributes.kodok[0] }}
+          {%- else -%}
+            {{ this.state if this.state not in ['unknown', 'unavailable', ''] else 'unknown' }}
+          {%- endif -%}
+        attributes:
+          utolso_ellenorzes: >-
+            {%- set n = states.sensor.kazan_hibanaplo_nyers -%}
+            {{ n.last_updated.astimezone(now().tzinfo).strftime('%Y-%m-%d %H:%M:%S') if n else '' }}
+          bejegyzesek: >-
+            {%- macro le(teljes) -%}
+              {%- set magyar = {
+                '501': 'Nincs láng — a lángőr nem érzékel lángot',
+                '502': 'Láng zárt gázszelepnél',
+                '504': 'Lángleválás',
+                '5P1': 'Első gyújtási kísérlet sikertelen',
+                '5P2': 'Második gyújtási kísérlet is sikertelen',
+                '5P3': 'Lángleválás működés közben',
+                '5P4': 'Lángleválás',
+                '5P6': 'Nincs láng',
+                '101': 'Primer kör túlmelegedés',
+                '104': 'Elégtelen keringetés',
+                '108': 'Feltöltés szükséges (alacsony víznyomás)',
+                '109': 'Alacsony víznyomás',
+                '309': 'Gázszelep vagy gázrelé hiba',
+                '604': 'Alacsony ventilátor-fordulat',
+                '607': 'Nyomáskapcsoló zárva álló ventilátornál',
+                '612': 'Ventilátor hiba'} -%}
+              {%- set k = teljes.split('-')[0] -%}
+              {{- magyar.get(k, teljes.split('-', 1)[1] if '-' in teljes else teljes) -}}
+            {%- endmacro -%}
+            {%- set n = states.sensor.kazan_hibanaplo_nyers -%}
+            {%- set uj = (n.attributes.kodok | list) if (n and n.attributes.ok) else [] -%}
+            {%- set regi = this.attributes.bejegyzesek | default(none) -%}
+            {%- set most = now().strftime('%Y-%m-%d %H:%M:%S') -%}
+            {%- if (uj | count) != 10 -%}
+              {{ regi if regi is not none else [] }}
+            {%- elif regi is none or (regi | count) != 10 -%}
+              {#- első kiolvasás: ami már bent van, arról nincs időpont -#}
+              {%- set ns = namespace(l=[]) -%}
+              {%- for kod in uj -%}
+                {%- set ns.l = ns.l + [dict(kod=kod, leiras=le(kod) | trim, elso_kiolvasas='', megjegyzes='a nyilvántartás kezdete előtti')] -%}
+              {%- endfor -%}
+              {{ ns.l }}
+            {%- else -%}
+              {%- set rk = regi | map(attribute='kod') | list -%}
+              {%- if uj == rk -%}
+                {{ regi }}
+              {%- else -%}
+                {%- set ns = namespace(k=10) -%}
+                {%- for k in range(9, 0, -1) -%}
+                  {%- if uj[k:] == rk[:10 - k] -%}{%- set ns.k = k -%}{%- endif -%}
+                {%- endfor -%}
+                {%- set uj_resz = namespace(l=[]) -%}
+                {%- for kod in uj[:ns.k] -%}
+                  {%- set uj_resz.l = uj_resz.l + [dict(kod=kod, leiras=le(kod) | trim, elso_kiolvasas=most, megjegyzes='')] -%}
+                {%- endfor -%}
+                {{ uj_resz.l + regi[:10 - ns.k] }}
+              {%- endif -%}
+            {%- endif -%}
+
+  - sensor:
+      # A legfrissebb hibanapló-bejegyzés (a „Most” állapotsáv ezt mutatja)
+      - name: "Kazán utolsó hibakód"
+        unique_id: kazan_utolso_hibakod
+        icon: mdi:alert-circle-outline
+        state: >-
+          {%- set l = state_attr('sensor.kazan_hibanaplo', 'bejegyzesek') -%}
+          {{ l[0].kod if l else 'nincs rögzítve' }}
+        attributes:
+          kod: >-
+            {%- set l = state_attr('sensor.kazan_hibanaplo', 'bejegyzesek') -%}
+            {{ l[0].kod.split('-')[0] if l else '' }}
+          leiras: >-
+            {%- set l = state_attr('sensor.kazan_hibanaplo', 'bejegyzesek') -%}
+            {{ l[0].leiras if l else '' }}
+          elso_kiolvasas: >-
+            {%- set l = state_attr('sensor.kazan_hibanaplo', 'bejegyzesek') -%}
+            {{ l[0].elso_kiolvasas if l else '' }}
+          napja: >-
+            {%- set l = state_attr('sensor.kazan_hibanaplo', 'bejegyzesek') -%}
+            {%- set t = l[0].elso_kiolvasas if l else '' -%}
+            {{ (now().date() - as_local(as_datetime(t)).date()).days if t else none }}
+
+automation:
+  - id: kazan_hibanaplo_uj_bejegyzes
+    alias: "Kazán hibanapló – új bejegyzés naplózása"
+    description: "Ha a kazán hibanaplójába új bejegyzés kerül, beírja a HA naplóba."
+    mode: queued
+    triggers:
+      - trigger: state
+        entity_id: sensor.kazan_hibanaplo
+        attribute: bejegyzesek
+    conditions:
+      - condition: template
+        value_template: >-
+          {%- set uj = trigger.to_state.attributes.bejegyzesek | default([]) -%}
+          {%- set regi = trigger.from_state.attributes.bejegyzesek | default([]) if trigger.from_state else [] -%}
+          {{ uj and regi and uj[0].elso_kiolvasas != '' and uj[0].elso_kiolvasas != regi[0].elso_kiolvasas }}
+    actions:
+      - variables:
+          uj: "{{ trigger.to_state.attributes.bejegyzesek }}"
+          regi: "{{ trigger.from_state.attributes.bejegyzesek }}"
+          darab: >-
+            {{ uj | selectattr('elso_kiolvasas', 'eq', uj[0].elso_kiolvasas) | list | count }}
+      - action: logbook.log
+        data:
+          name: "Kazán hibanapló"
+          message: >-
+            {{ darab }} új bejegyzés: {{ (uj[:darab | int] | map(attribute='kod') | join(', ')) }}
+          entity_id: sensor.kazan_hibanaplo

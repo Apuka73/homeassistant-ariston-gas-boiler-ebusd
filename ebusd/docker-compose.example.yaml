@@ -1,0 +1,48 @@
+# Példa: ebusd indítása Dockerben, Ariston BridgeNet kazánhoz.
+#
+# Használat:
+#   1. Másold a repó `.env.example` fájlját `.env` néven, és töltsd ki.
+#   2. Másold ezt a fájlt `docker-compose.yaml` néven oda, ahol futtatni szeretnéd.
+#   3. Az `ariston.csv`-t (ebből a mappából) tedd a `./config` könyvtárba.
+#   4. `docker compose up -d`
+#
+# Az MQTT sorok OPCIONÁLISAK: a Home Assistant integrációhoz nem kellenek, mert az
+# közvetlenül az ebusd 8888-as TCP parancsportjáról olvas. Csak akkor hagyd bent őket,
+# ha a `packages/` alatti, MQTT-alapú YAML változatot is használni akarod.
+
+services:
+  ebusd:
+    image: john30/ebusd
+    container_name: ebusd
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./config:/config
+    command: >
+      ebusd
+      --device=${EBUSD_DEVICE}
+      --configpath=/config
+      --scanconfig=off
+      --pollinterval=15
+      --receivetimeout=5000
+      --latency=20000
+      --sendretries=10
+      --acquireretries=5
+      --acquiretimeout=20
+      --mqtthost=${MQTT_HOST}
+      --mqttport=${MQTT_PORT}
+      --mqttuser=${MQTT_USER}
+      --mqttpass=${MQTT_PASSWORD}
+      --mqttjson
+      --mqttretain
+      --mqttint=/config/mqtt-hassio.cfg
+      --mqtttopic=ebusd
+
+# Magyarázat a kapcsolókhoz (részletesen: docs/ebusd-beallitas.md):
+#
+#   --device=ens:<ip>:9999   hálózati adapter „enhanced” protokollal (pl. Elecrow eBUS Stick C6)
+#   --configpath=/config     a SAJÁT ariston.csv-t töltse be, ne a letöltöttet
+#   --scanconfig=off         ne próbáljon automatikusan konfigurációt választani
+#   --pollinterval=15        15 másodpercenként EGY lekérdezés megy ki a lassú buszra
+#   --latency=20000          WiFi-s adapternél elengedhetetlen
+#   --receivetimeout=5000    lassabban válaszoló kazánhoz

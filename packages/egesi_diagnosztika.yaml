@@ -1,0 +1,49 @@
+# Kazán égési diagnosztika
+#
+# Az ebusd MQTT szenzorai nem kapnak state_class-t (a mqtt-hassio.cfg mintái nem
+# illeszkednek a mértékegység nélküli számlálókra), ezért nincs hosszú távú
+# statisztikájuk és a trendjük eltűnne a recorder purge-kor. Ezek a template
+# szenzorok ezt pótolják, és kiszámolják a valódi diagnosztikai mérőszámot:
+# hány lángleszakadás jut 1000 gyújtásra.
+#
+# Forrás: a 10 mélységű kazán-hibanapló (ebusctl read -c boiler error_slot_N)
+# 2026-08-16-án kizárólag égési hibákat tartalmazott.
+
+template:
+  - sensor:
+      - name: "Kazán lángleszakadások"
+        unique_id: kazan_langleszakadasok_osszesen
+        icon: mdi:fire-alert
+        state_class: total_increasing
+        state: >-
+          {{ states('sensor.heating_ebusd_boiler_ebusd_boiler_flame_lift_offs') | int(0) }}
+        availability: >-
+          {{ states('sensor.heating_ebusd_boiler_ebusd_boiler_flame_lift_offs')
+             not in ['unknown', 'unavailable', 'none', ''] }}
+
+      - name: "Kazán gyújtási ciklusok"
+        unique_id: kazan_gyujtasi_ciklusok_osszesen
+        icon: mdi:counter
+        state_class: total_increasing
+        state: >-
+          {{ states('sensor.heating_ebusd_boiler_ebusd_boiler_ignition_cycles') | int(0) }}
+        availability: >-
+          {{ states('sensor.heating_ebusd_boiler_ebusd_boiler_ignition_cycles')
+             not in ['unknown', 'unavailable', 'none', ''] }}
+
+      # A tényleges mérőszám: időbélyeg nélkül csak az arány romlása árulkodó.
+      - name: "Kazán lángleszakadás arány"
+        unique_id: kazan_langleszakadas_arany
+        icon: mdi:chart-line-variant
+        unit_of_measurement: "‰"
+        state_class: measurement
+        state: >-
+          {% set l = states('sensor.heating_ebusd_boiler_ebusd_boiler_flame_lift_offs') | float(-1) %}
+          {% set c = states('sensor.heating_ebusd_boiler_ebusd_boiler_ignition_cycles') | float(-1) %}
+          {% if l >= 0 and c > 0 %}
+            {{ (l / c * 1000) | round(2) }}
+          {% else %}
+            {{ none }}
+          {% endif %}
+        availability: >-
+          {{ states('sensor.heating_ebusd_boiler_ebusd_boiler_ignition_cycles') | float(0) > 0 }}

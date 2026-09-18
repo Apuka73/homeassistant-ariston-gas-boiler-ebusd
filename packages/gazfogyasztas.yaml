@@ -1,0 +1,344 @@
+# Gázfogyasztás mérése a kazán saját lángteljesítményéből
+#
+# FONTOS FELTÉTEL: ez a becslés a KAZÁN által elégetett gázt adja meg. A referenciarendszerben
+# a kazán az egyetlen gázfogyasztó, ezért ott ez egyben a teljes gázfogyasztás is. Ha nálad
+# gáztűzhely, gázbojler vagy gázkonvektor is van, azok fogyasztása ebben NEM szerepel, és a
+# becsült gázóra-állás idővel elcsúszik a valóditól. Az ebusd az `ebusd/boiler/flame_power_kw`
+# topicon percenként közli az égő pillanatnyi, modulált teljesítményét kW-ban.
+# Ezt időben integrálva megkapjuk a leadott hőt (kWh), abból pedig egyetlen
+# kalibrációs szorzóval a gáz térfogatát (m³).
+#
+# Az érték hitelessége ellenőrizhető: a mért maximum 14,6 kW pontosan a
+# kazán névleges 24 kW-jának a beállított fűtési maximuma (61%) — 24 × 0,61.
+#
+# A nyers MQTT topicra épül, nem a discovery entitásra: a mqtt-hassio.cfg
+# szerkesztésekor az automatikusan létrehozott entitások átneveződhetnek
+# (2026-08-16-án a kazán entitásainak nagy része a `heating_` előtagra
+# költözött), a topic neve viszont állandó.
+#
+# 2026-09-14 (próbafűtés után): a flame_power_kw-t az ebusd `r2` prioritással
+# csak ~6 percenként olvasta, ezért a láng kialvása után percekig a régi kW-érték
+# maradt meg, és az integrál nem létező gázt számolt (a próbán +0,5 kWh a végén,
+# −0,75 kWh az elején, összesen −8,6 %). Két javítás:
+#   1. ariston.csv: flame_power_kw r2 -> r1 (~5 helyett ~3 perces frissítés; az
+#      ebusd --pollinterval=15 miatt 15 mp-enként csak egy lekérdezés megy ki)
+#   2. itt: a teljesítményt a kazán gyors `boiler_status` broadcastjával kapuzzuk:
+#      készenlétben és utókeringetésben 0 kW, függetlenül a beragadt értéktől.
+# Az integrál ezért a kapuzott szenzort összegzi. A nyers szenzor megmarad
+# összehasonlításnak.
+
+mqtt:
+  sensor:
+    # A kazán állapota a `b` (broadcast) boiler_status üzenetből: másodperceken
+    # belül jelzi a heating -> standby váltást, míg a teljesítmény lekérdezése
+    # percekig késhet. Payload: {"boilerstatus": {"value": "heating"}, "z1_heating": ...}
+    - name: "Kazán állapot"
+      unique_id: kazan_allapot
+      state_topic: "ebusd/boiler/boiler_status"
+      value_template: "{{ value_json.boilerstatus.value }}"
+      icon: mdi:water-boiler
+      availability:
+        - topic: "ebusd/global/running"
+          payload_available: "true"
+          payload_not_available: "false"
+
+    # Az égő pillanatnyi teljesítménye. Payload: {"0": {"name": "", "value": 7.6}}
+    - name: "Kazán lángteljesítmény"
+      unique_id: kazan_langteljesitmeny
+      state_topic: "ebusd/boiler/flame_power_kw"
+      value_template: "{{ value_json['0'].value }}"
+      unit_of_measurement: "kW"
+      device_class: power
+      state_class: measurement
+      icon: mdi:fire
+      # Ha az ebusd leáll, a retained érték beragadna és az integrátor tovább
+      # számolna egy nem létező lángot. Az LWT ezt megakadályozza.
+      availability:
+        - topic: "ebusd/global/running"
+          payload_available: "true"
+          payload_not_available: "false"
+
+input_number:
+  # Hány m³ gáz esik 1 kWh leadott hőre. Kiindulás: 1 m³ ≈ 9,4 kWh égéshő,
+  # ebből egy kondenzációs kazán radiátoros rendszerben ~90%-ot ad át,
+  # azaz 1 m³ ≈ 8,5 kWh  ->  1 / 8,5 = 0,118.
+  #
+  # A 0 azt jelenti: MÉG NINCS BEMÉRVE. Ilyenkor a szenzor a fenti 0,118-as
+  # elméleti kiindulással számol. Amint bemérted a fizikai gázóráról (lásd a
+  # fájl végén), írd ide a kapott értéket, és onnantól az lesz érvényes.
+  gaz_kalibracio:
+    name: Gáz kalibráció
+    min: 0
+    max: 0.2
+    step: 0.001
+    mode: box
+    icon: mdi:tune-variant
+    unit_of_measurement: "m³/kWh"
+
+  # --- Valós gázóra-leolvasás és becslés (2026-09-14) -----------------------------
+  # A dashboardon ide írod be a fizikai gázóra állását. Egy automatizálás ebből
+  # újraalapozza a becslést, és elég fogyasztás után kiszámolja a gaz_kalibracio-t.
+  gazora_leolvasas:
+    name: Új valós gázóra-állás
+    min: 0
+    max: 999999
+    step: 0.001
+    mode: box
+    icon: mdi:meter-gas
+    unit_of_measurement: "m³"
+  # Az utolsó leolvasás és a hozzá tartozó kazan_hoenergia (a becslés alapja).
+  gazora_ref_allas:
+    name: Gázóra utolsó leolvasás
+    min: 0
+    max: 999999
+    step: 0.001
+    mode: box
+    unit_of_measurement: "m³"
+  gazora_ref_energia:
+    name: Hőenergia az utolsó leolvasáskor
+    min: 0
+    max: 9999999
+    step: 0.001
+    mode: box
+    unit_of_measurement: "kWh"
+  # A kalibráció kiinduló pontja: az első leolvasás és akkori hőenergia. A szorzót
+  # mindig ettől a ponttól számoljuk, így minden újabb leolvasással pontosabb lesz.
+  gazora_kalib_start_allas:
+    name: Gázóra kalibráció kiinduló állás
+    min: 0
+    max: 999999
+    step: 0.001
+    mode: box
+    unit_of_measurement: "m³"
+  gazora_kalib_start_energia:
+    name: Hőenergia a kalibráció kezdetén
+    min: 0
+    max: 9999999
+    step: 0.001
+    mode: box
+    unit_of_measurement: "kWh"
+
+input_datetime:
+  gazora_leolvasas_ideje:
+    name: Gázóra leolvasás ideje
+    has_date: true
+    has_time: true
+  # Az első valós leolvasás ideje: ettől számol a "nyilvántartás kezdete óta" számláló.
+  gazora_kalib_start_ideje:
+    name: Gázóra nyilvántartás kezdete
+    has_date: true
+    has_time: true
+
+automation:
+  - id: gazora_leolvasas_igazitas
+    alias: Gázóra leolvasás – becslés és kalibráció igazítása
+    description: >-
+      Új valós gázóra-állás beírásakor: az első alkalommal rögzíti a kalibráció kiinduló
+      pontját; ha azóta legalább 20 kWh fogyott, újraszámolja a gaz_kalibracio szorzót
+      (m³/kWh), végül a becslést az új leolvasásra alapozza.
+    mode: queued
+    triggers:
+      - trigger: state
+        entity_id: input_number.gazora_leolvasas
+    conditions:
+      # HA-induláskor (from_state nincs) és érvénytelen értéknél nem fut.
+      - condition: template
+        value_template: >-
+          {{ trigger.from_state is not none
+             and trigger.from_state.state not in ['unknown', 'unavailable']
+             and trigger.to_state.state not in ['unknown', 'unavailable']
+             and trigger.to_state.state | float(0) > 0
+             and states('sensor.kazan_hoenergia') not in ['unknown', 'unavailable'] }}
+    actions:
+      - variables:
+          uj: "{{ states('input_number.gazora_leolvasas') | float }}"
+          e_most: "{{ states('sensor.kazan_hoenergia') | float }}"
+          start_allas: "{{ states('input_number.gazora_kalib_start_allas') | float(0) }}"
+          start_e: "{{ states('input_number.gazora_kalib_start_energia') | float(0) }}"
+          k_uj: >-
+            {% set de = e_most - start_e %}
+            {% set dm = uj - start_allas %}
+            {% if start_allas > 0 and de >= 20 and dm > 0 %}{{ (dm / de) | round(4) }}{% else %}0{% endif %}
+      - if:
+          - condition: template
+            value_template: "{{ start_allas <= 0 }}"
+        then:
+          - action: input_number.set_value
+            target: { entity_id: input_number.gazora_kalib_start_allas }
+            data: { value: "{{ uj }}" }
+          - action: input_number.set_value
+            target: { entity_id: input_number.gazora_kalib_start_energia }
+            data: { value: "{{ e_most }}" }
+          - action: input_datetime.set_datetime
+            target: { entity_id: input_datetime.gazora_kalib_start_ideje }
+            data: { datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}" }
+      - if:
+          - condition: template
+            value_template: "{{ 0.05 <= (k_uj | float(0)) <= 0.2 }}"
+        then:
+          - action: input_number.set_value
+            target: { entity_id: input_number.gaz_kalibracio }
+            data: { value: "{{ k_uj | float }}" }
+          - action: logbook.log
+            data:
+              name: Gázóra kalibráció
+              message: "Új szorzó: {{ k_uj }} m³/kWh (leolvasás: {{ uj }} m³)"
+      - action: input_number.set_value
+        target: { entity_id: input_number.gazora_ref_allas }
+        data: { value: "{{ uj }}" }
+      - action: input_number.set_value
+        target: { entity_id: input_number.gazora_ref_energia }
+        data: { value: "{{ e_most }}" }
+      - action: input_datetime.set_datetime
+        target: { entity_id: input_datetime.gazora_leolvasas_ideje }
+        data: { datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}" }
+
+sensor:
+  # Riemann-integrál: kW -> kWh. A trapéz módszer követi a moduláció lassú
+  # változását.
+  #
+  # A max_sub_interval nem elhagyható. Az ebusd csak értékváltozáskor publikál,
+  # így készenlétben órákig nem jön új üzenet. Nélküle a láng begyulladásakor a
+  # trapéz a legutóbbi üzenet óta eltelt teljes időre számolna fél lángerőt —
+  # akár több órányi nem létező gázt. Az 1 perc ezt a hibát az égés fel- és
+  # lefutó élén is 0,1 kWh alá szorítja, és a két él ellentétes előjelű hibája
+  # nagyrészt kioltja egymást. Készenlétben nem termel adatbázis-sort, mert
+  # nulla teljesítménynél az integrál értéke nem változik.
+  #
+  # Forrás 2026-09-14 óta a kapuzott teljesítmény (lásd a fájl elején).
+  - platform: integration
+    source: sensor.kazan_langteljesitmeny_kapuzott
+    name: kazan_hoenergia
+    unique_id: kazan_hoenergia
+    method: trapezoidal
+    round: 3
+    max_sub_interval: "00:01:00"
+
+template:
+  - sensor:
+      # Az integrál forrása: a nyers lángteljesítmény, de 0, ha a kazán broadcast
+      # szerint nem éghet láng (készenlét, utókeringetés, nyomáshiány, lángkimaradás).
+      # A "heating" állapot már a gyújtás előtt beáll, ott a nyers érték (jellemzően
+      # még 0) marad érvényben, amíg az ebusd le nem olvassa az új teljesítményt.
+      - name: "Kazán lángteljesítmény (kapuzott)"
+        unique_id: kazan_langteljesitmeny_kapuzott
+        default_entity_id: sensor.kazan_langteljesitmeny_kapuzott
+        unit_of_measurement: "kW"
+        device_class: power
+        state_class: measurement
+        icon: mdi:fire
+        state: >-
+          {% if states('sensor.kazan_allapot') in
+                ['standby', 'circulating', 'low_water_pressure', 'no_flame'] %}
+            0
+          {% else %}
+            {{ states('sensor.kazan_langteljesitmeny') | float(0) }}
+          {% endif %}
+        availability: >-
+          {{ states('sensor.kazan_langteljesitmeny') not in
+             ['unknown', 'unavailable', 'none', ''] }}
+
+      # A tényleges gázfogyasztás. device_class + state_class miatt közvetlenül
+      # beköthető az Energia irányítópultba gázforrásként, és hosszú távú
+      # statisztikát kap — vagyis a recorder rövidítése után is megmarad.
+      - name: "Gázfogyasztás"
+        unique_id: gazfogyasztas_kazan
+        unit_of_measurement: "m³"
+        device_class: gas
+        state_class: total_increasing
+        icon: mdi:meter-gas
+        state: >-
+          {% set k = states('input_number.gaz_kalibracio') | float(0) %}
+          {% set k = k if k > 0 else 0.118 %}
+          {{ (states('sensor.kazan_hoenergia') | float(0) * k) | round(3) }}
+        availability: >-
+          {{ states('sensor.kazan_hoenergia') not in
+             ['unknown', 'unavailable', 'none', ''] }}
+
+      # Kontroll a kazán saját, független óraszámlálójából. Nem ugyanaz az út,
+      # mint a fenti integrál, ezért jó ellenőrzés: ha a kettő tartósan
+      # elszalad egymástól, valami elromlott a láncban.
+      - name: "Kazán égőórák"
+        unique_id: kazan_egoorak
+        unit_of_measurement: "h"
+        state_class: total_increasing
+        icon: mdi:timer-outline
+        state: >-
+          {{ states('sensor.heating_ebusd_boiler_ebusd_boiler_hours_burner_on_ch')
+             | int(0) }}
+        availability: >-
+          {{ states('sensor.heating_ebusd_boiler_ebusd_boiler_hours_burner_on_ch')
+             not in ['unknown', 'unavailable', 'none', ''] }}
+
+      # A fizikai gázóra becsült mostani állása: utolsó leolvasás + az azóta elégetett
+      # energia × szorzó. Új leolvasás beírásakor az automatizálás újraalapozza.
+      - name: "Gázóra becsült állás"
+        unique_id: gazora_becsult_allas
+        unit_of_measurement: "m³"
+        device_class: gas
+        state_class: total_increasing
+        icon: mdi:meter-gas
+        state: >-
+          {% set k = states('input_number.gaz_kalibracio') | float(0) %}
+          {% set k = k if k > 0 else 0.118 %}
+          {% set ref = states('input_number.gazora_ref_allas') | float(0) %}
+          {% set de = states('sensor.kazan_hoenergia') | float(0)
+                      - states('input_number.gazora_ref_energia') | float(0) %}
+          {{ (ref + ([de, 0] | max) * k) | round(3) }}
+        availability: >-
+          {{ states('input_number.gazora_ref_allas') | float(0) > 0
+             and states('sensor.kazan_hoenergia') not in ['unknown', 'unavailable', 'none', ''] }}
+
+      - name: "Gázfogyasztás a leolvasás óta"
+        unique_id: gazfogyasztas_leolvasas_ota
+        unit_of_measurement: "m³"
+        icon: mdi:fire
+        state: >-
+          {% set k = states('input_number.gaz_kalibracio') | float(0) %}
+          {% set k = k if k > 0 else 0.118 %}
+          {% set de = states('sensor.kazan_hoenergia') | float(0)
+                      - states('input_number.gazora_ref_energia') | float(0) %}
+          {{ (([de, 0] | max) * k) | round(3) }}
+        availability: >-
+          {{ states('input_number.gazora_ref_allas') | float(0) > 0
+             and states('sensor.kazan_hoenergia') not in ['unknown', 'unavailable', 'none', ''] }}
+
+      # Összes gázfogyasztás az első valós leolvasás (a nyilvántartás kezdete) óta:
+      # becsült mostani állás − első leolvasott állás. Valós leolvasással korrigálva a
+      # becslés, és így ez a számláló is a gázórához igazodik.
+      - name: "Gázfogyasztás a nyilvántartás kezdete óta"
+        unique_id: gazfogyasztas_nyilvantartas_ota
+        unit_of_measurement: "m³"
+        device_class: gas
+        state_class: total_increasing
+        icon: mdi:counter
+        state: >-
+          {% set most = states('sensor.gazora_becsult_allas') | float(0) %}
+          {% set start = states('input_number.gazora_kalib_start_allas') | float(0) %}
+          {{ ([most - start, 0] | max) | round(3) }}
+        availability: >-
+          {{ states('input_number.gazora_kalib_start_allas') | float(0) > 0
+             and states('sensor.gazora_becsult_allas') not in ['unknown', 'unavailable', 'none', ''] }}
+        attributes:
+          kezdete: "{{ states('input_datetime.gazora_kalib_start_ideje') }}"
+
+# KALIBRÁCIÓ — 2026-09-14 óta automatikus (a korábbi kézi módszer lent, tájékoztatásul)
+#
+#   A Kazán dashboard "Gázóra" szekciójában az "Új valós gázóra-állás" mezőbe írd be
+#   a fizikai gázóra állását. Az első beírás rögzíti a kiinduló pontot; ha azóta
+#   legalább 20 kWh fogyott, az automatizálás kiszámolja és beírja a gaz_kalibracio-t.
+#   Minél régebbi az első leolvasás, annál pontosabb a szorzó.
+#
+# Korábbi, kézi módszer:
+#
+#   1. Most: jegyezd fel a fizikai gázóra állását és a sensor.kazan_hoenergia
+#      értékét.
+#   2. Egy fűtött hónap múlva: olvasd le mindkettőt újra.
+#   3. gaz_kalibracio = (óra m³ különbsége) / (kazan_hoenergia kWh különbsége)
+#   4. Írd be az új értéket a "Gáz kalibráció" helperbe (Beállítások ->
+#      Eszközök és szolgáltatások -> Helperek). Amíg 0 marad, a szenzor a
+#      0,118-as elméleti kiindulással számol.
+#
+# A szorzó módosításakor a Gázfogyasztás szenzor egyszer ugrik. Ez normális:
+# a total_increasing állapotosztály ezt méterórára cserélésként kezeli, nem
+# számol belőle negatív fogyasztást.

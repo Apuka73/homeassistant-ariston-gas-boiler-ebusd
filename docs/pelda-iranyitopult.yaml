@@ -1,0 +1,154 @@
+# Példa irányítópult az ariston_ebus integrációhoz
+#
+# Csak BEÉPÍTETT Home Assistant kártyákat használ — nem kell hozzá HACS-bővítmény.
+#
+# Használat: Beállítások → Irányítópultok → új irányítópult → jobb felül ceruza →
+# a három pont menüből „Nyers konfigurációszerkesztő", és ide másold be ezt a tartalmat.
+#
+# Az entitásnevek a te telepítésedtől függenek: az integráció az eszköz nevéből képezi őket
+# (itt „Ariston kazán" → sensor.ariston_kazan_...). Ha máshogy nevezted el, cseréld a neveket.
+views:
+- title: Kazán
+  path: kazan
+  icon: mdi:water-boiler
+  type: sections
+  max_columns: 3
+  header:
+    card:
+      type: markdown
+      text_only: true
+      content: '# Ariston gázkazán
+
+        Helyi adatok az eBUS buszról, felhő nélkül — *ariston_ebus* integráció'
+  sections:
+  - type: grid
+    column_span: 1
+    cards:
+    - type: heading
+      heading: Működés
+      icon: mdi:fire
+    - type: tile
+      entity: sensor.ariston_kazan_boiler_status
+      name: Kazán állapota
+      icon: mdi:water-boiler
+      color: orange
+    - type: tile
+      entity: binary_sensor.ariston_kazan_flame
+      name: Láng
+      icon: mdi:fire
+      color: red
+    - type: gauge
+      entity: sensor.ariston_kazan_flame_power
+      name: Lángteljesítmény
+      min: 0
+      max: 24
+      severity:
+      - green: 0
+      - yellow: 10
+      - red: 18
+    - type: tile
+      entity: sensor.ariston_kazan_modulation
+      name: Moduláció
+      icon: mdi:percent
+      color: cyan
+    - type: tile
+      entity: sensor.ariston_kazan_fan_speed
+      name: Ventilátor
+      icon: mdi:fan
+      color: blue
+    - type: tile
+      entity: sensor.ariston_kazan_visszatero_viz_homerseklete
+      name: Visszatérő víz
+      icon: mdi:thermometer-water
+      color: deep-orange
+  - type: grid
+    column_span: 1
+    cards:
+    - type: heading
+      heading: Gáz és energia
+      icon: mdi:meter-gas
+    - type: tile
+      entity: sensor.ariston_kazan_gas_consumption
+      name: Gázfogyasztás
+      icon: mdi:meter-gas
+      color: purple
+      vertical: false
+    - type: tile
+      entity: sensor.ariston_kazan_heat_energy
+      name: Leadott hőenergia
+      icon: mdi:radiator
+      color: amber
+    - type: tile
+      entity: sensor.ariston_kazan_estimated_gas_meter_reading
+      name: Gázóra becsült állása
+      icon: mdi:counter
+      color: purple
+    - type: tile
+      entity: sensor.ariston_kazan_gas_since_last_reading
+      name: Leolvasás óta
+      icon: mdi:fire
+      color: purple
+    - type: markdown
+      content: 'A kazán **nem mér gázt** — csak azt tudja, mekkora teljesítménnyel ég a láng.
+
+
+        Ebből az integráció kiszámolja a leadott hőt, és egy **bemérhető szorzóval** gáztérfogatot becsül.
+        A szorzó a fizikai gázóra leolvasásából pontosítható.'
+    - type: tile
+      entity: number.ariston_kazan_gas_calibration_factor
+      name: Kalibrációs szorzó
+      icon: mdi:tune-variant
+      color: grey
+  - type: grid
+    column_span: 1
+    cards:
+    - type: heading
+      heading: Égési diagnosztika
+      icon: mdi:chart-line-variant
+    - type: gauge
+      entity: sensor.ariston_kazan_flame_lift_ratio
+      name: Lángleszakadás 1000 gyújtásra
+      min: 0
+      max: 20
+      severity:
+      - green: 0
+      - yellow: 8
+      - red: 15
+    - type: tile
+      entity: sensor.ariston_kazan_ignition_cycles
+      name: Gyújtási ciklusok
+      icon: mdi:counter
+      color: grey
+    - type: tile
+      entity: sensor.ariston_kazan_flame_lift_offs
+      name: Lángleszakadások
+      icon: mdi:fire-alert
+      color: orange
+    - type: tile
+      entity: sensor.ariston_kazan_burner_hours_heating
+      name: Égőórák (fűtés)
+      icon: mdi:timer-outline
+      color: grey
+    - type: heading
+      heading: Busz és hibanapló
+      icon: mdi:bus-alert
+    - type: tile
+      entity: binary_sensor.ariston_kazan_ebus_signal
+      name: eBUS jel
+      icon: mdi:transit-connection-variant
+      color: green
+    - type: markdown
+      content: '### Kazán hibanaplója
+
+        | Kód | Jelentés | Először látva |
+
+        |---|---|---|
+
+        {% set l = state_attr(''sensor.ariston_kazan_error_log'',''entries'') %}{% if l %}{% for b in
+        l[:4] %}| `{{ b.code }}` | {{ b.description }} | {{ b.first_seen[:16] if b.first_seen else ''—''
+        }} |
+
+        {% endfor %}{% endif %}
+
+
+        *A kazán nem tárol időbélyeget; az időpontot az integráció a napló csúszásából állapítja meg.*'

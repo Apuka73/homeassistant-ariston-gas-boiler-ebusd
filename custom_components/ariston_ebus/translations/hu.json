@@ -1,0 +1,213 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Ariston eBUS (ebusd)",
+        "description": "Add meg a futó ebusd démon címét. Az integráció kizárólag olvas a buszról.",
+        "data": {
+          "host": "Cím",
+          "port": "Port"
+        },
+        "data_description": {
+          "host": "Annak a gépnek az IP-címe vagy neve, ahol az ebusd fut (NEM az eBUS adapteré).",
+          "port": "Az ebusd TCP parancsportja, alapértelmezetten 8888."
+        }
+      },
+      "reconfigure": {
+        "title": "Az ebusd címének módosítása",
+        "description": "Add meg az ebusd új címét. Az entitások és az előzmény megmaradnak.",
+        "data": {
+          "host": "Cím",
+          "port": "Port"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Ezen a címen nem érem el az ebusd-t.",
+      "invalid_response": "A szolgáltatás válaszolt, de nem úgy tűnik, hogy ebusd lenne.",
+      "no_boiler": "Az ebusd fut, de nincs benne „boiler” kör. Ellenőrizd a betöltött CSV konfigurációt."
+    },
+    "abort": {
+      "already_configured": "Ez az ebusd példány már be van állítva.",
+      "masik_ebusd": "Ez egy másik ebusd példány, mint ami be van állítva.",
+      "reconfigure_successful": "A cím frissítve."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Beállítások",
+        "data": {
+          "scan_interval": "Lekérdezési ütem (másodperc)",
+          "gas_estimation": "Gázfogyasztás becslése",
+          "error_log": "A kazán hibanaplójának olvasása"
+        },
+        "data_description": {
+          "scan_interval": "Milyen sűrűn frissüljenek az értékek. A lassan változó regisztereket ettől függetlenül ritkán olvassuk.",
+          "gas_estimation": "A lángteljesítményt hőenergiává integrálja, abból számol gáztérfogatot.",
+          "error_log": "10 percenként kiolvassa mind a 10 hibanapló-bejegyzést."
+        }
+      }
+    }
+  },
+  "services": {
+    "set_gas_meter_reading": {
+      "name": "Gázóra-állás rögzítése",
+      "description": "Rögzíti a fizikai gázóra állását, erre alapozza a becslést, és bemérve pontosítja az m³/kWh szorzót.",
+      "fields": {
+        "reading": {
+          "name": "Gázóra-állás",
+          "description": "A fizikai gázórán látható érték, m³-ben."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "boiler_status": {
+        "name": "Kazán állapota",
+        "state": {
+          "standby": "Készenlét",
+          "heating": "Fűtés",
+          "circulating": "Keringetés",
+          "comfort": "Komfort",
+          "gas_circuit_deaeration": "Gázkör légtelenítés",
+          "auto_calibration": "Önkalibráció",
+          "low_water_pressure": "Alacsony víznyomás",
+          "no_flame": "Nincs láng",
+          "heating_hot_water": "Használati melegvíz fűtése",
+          "water_tank": "Tárolótöltés",
+          "manual_test": "Kézi teszt"
+        }
+      },
+      "flame_power": {
+        "name": "Lángteljesítmény (nyers)"
+      },
+      "flame_power_gated": {
+        "name": "Lángteljesítmény"
+      },
+      "modulation": {
+        "name": "Moduláció"
+      },
+      "fan_speed": {
+        "name": "Ventilátor fordulatszám"
+      },
+      "outside_temperature": {
+        "name": "Külső hőmérséklet"
+      },
+      "boiler_pressure": {
+        "name": "Víznyomás"
+      },
+      "burner_hours_heating": {
+        "name": "Égőórák (fűtés)"
+      },
+      "burner_hours_water": {
+        "name": "Égőórák (melegvíz)"
+      },
+      "pump_hours": {
+        "name": "Szivattyú üzemórák"
+      },
+      "ignition_cycles": {
+        "name": "Gyújtási ciklusok"
+      },
+      "flame_lift_offs": {
+        "name": "Lángleszakadások"
+      },
+      "flame_lift_ratio": {
+        "name": "Lángleszakadás arány"
+      },
+      "fan_cycles": {
+        "name": "Ventilátor ciklusok"
+      },
+      "circulation_cycles": {
+        "name": "Keringetési ciklusok"
+      },
+      "diverter_cycles": {
+        "name": "Váltószelep ciklusok"
+      },
+      "diverter_valve": {
+        "name": "Váltószelep",
+        "state": {
+          "heating": "Fűtés",
+          "dhw": "Melegvíz"
+        }
+      },
+      "nominal_power": {
+        "name": "Névleges teljesítmény"
+      },
+      "heating_max_power": {
+        "name": "Fűtési maximum teljesítmény"
+      },
+      "heating_min_power": {
+        "name": "Fűtési minimum teljesítmény"
+      },
+      "water_max_power": {
+        "name": "Melegvíz maximum teljesítmény"
+      },
+      "boiler_type": {
+        "name": "Kazán típusa"
+      },
+      "pressure_device": {
+        "name": "Nyomásfigyelő eszköz"
+      },
+      "pump_operation": {
+        "name": "Szivattyú működése"
+      },
+      "post_circulation": {
+        "name": "Utókeringetés"
+      },
+      "dhw_target_temperature": {
+        "name": "Melegvíz céhőmérséklet"
+      },
+      "flow_setpoint": {
+        "name": "Előremenő alapjel"
+      },
+      "heat_energy": {
+        "name": "Leadott hőenergia"
+      },
+      "gas_consumption": {
+        "name": "Gázfogyasztás"
+      },
+      "gas_meter_estimate": {
+        "name": "Gázóra becsült állása"
+      },
+      "gas_since_reading": {
+        "name": "Gázfogyasztás a leolvasás óta"
+      },
+      "error_log": {
+        "name": "Hibanapló"
+      },
+      "symbol_rate": {
+        "name": "Busz szimbólumsebesség"
+      },
+      "return_temperature": {
+        "name": "Visszatérő víz hőmérséklete"
+      },
+      "operating_hours": {
+        "name": "Üzemidő"
+      }
+    },
+    "binary_sensor": {
+      "flame": {
+        "name": "Láng"
+      },
+      "zone1_heating": {
+        "name": "1. zóna fűtésigény"
+      },
+      "zone2_heating": {
+        "name": "2. zóna fűtésigény"
+      },
+      "zone3_heating": {
+        "name": "3. zóna fűtésigény"
+      },
+      "bus_signal": {
+        "name": "eBUS jel"
+      }
+    },
+    "number": {
+      "gas_factor": {
+        "name": "Gáz kalibrációs szorzó"
+      }
+    }
+  }
+}

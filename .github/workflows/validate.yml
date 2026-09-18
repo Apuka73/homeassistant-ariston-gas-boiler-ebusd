@@ -1,0 +1,38 @@
+name: Ellenőrzés
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 4 * * 1"
+
+jobs:
+  hassfest:
+    name: Home Assistant hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    name: HACS
+    runs-on: ubuntu-latest
+    # A HACS validátor a hacs.json-t és a manifest.json-t hitelesítés nélkül tölti le a
+    # raw.githubusercontent.com-ról, ami PRIVÁT repónál 404-et ad, és emiatt „érvénytelen
+    # fájl" hibát jelez. Ezért privát állapotban kihagyjuk; publikussá tétel után magától fut.
+    if: ${{ github.event.repository == null || !github.event.repository.private }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hacs/action@main
+        with:
+          category: integration
+
+  tests:
+    name: Egységtesztek
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: python -m unittest discover -s tests -v
